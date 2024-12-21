@@ -222,6 +222,19 @@ YTMainAppControlsOverlayView *controlsOverlayView;
 
 %hook YTIPlayerResponse
 - (BOOL)isMonetized { return NO; }
+%new(@@:)
+- (NSMutableArray *)playerAdsArray {
+    return [NSMutableArray array];
+}
+%new(@@:)
+- (NSMutableArray *)adSlotsArray {
+    return [NSMutableArray array];
+}
+%end
+
+%hook YTIClientMdxGlobalConfig
+%new(B@:)
+- (BOOL)enableSkippableAd { return YES; }
 %end
 
 %hook YTAdShieldUtils
@@ -251,11 +264,11 @@ YTMainAppControlsOverlayView *controlsOverlayView;
 %end
 
 %hook YTReelInfinitePlaybackDataSource
-- (void)setReels:(NSMutableOrderedSet <YTReelModel *> *)reels {
-    [reels removeObjectsAtIndexes:[reels indexesOfObjectsPassingTest:^BOOL(YTReelModel *obj, NSUInteger idx, BOOL *stop) {
-        return [obj respondsToSelector:@selector(videoType)] ? obj.videoType == 3 : NO;
-    }]];
-    %orig;
+- (YTReelModel *)makeContentModelForEntry:(id)entry {
+    YTReelModel *model = %orig;
+    if ([model respondsToSelector:@selector(videoType)] && model.videoType == 3)
+        return nil;
+    return model;
 }
 %end
 %end
@@ -268,6 +281,18 @@ YTMainAppControlsOverlayView *controlsOverlayView;
 %end
 %hook YTIPlayerResponse
 - (BOOL)isMonetized { return NO; }
+%new(@@:)
+- (NSMutableArray *)playerAdsArray {
+    return [NSMutableArray array];
+}
+%new(@@:)
+- (NSMutableArray *)adSlotsArray {
+    return [NSMutableArray array];
+}
+%end
+%hook YTIClientMdxGlobalConfig
+%new(B@:)
+- (BOOL)enableSkippableAd { return YES; }
 %end
 %hook YTAdShieldUtils
 + (id)spamSignalsDictionary { return @{}; }
@@ -290,50 +315,38 @@ YTMainAppControlsOverlayView *controlsOverlayView;
 - (void)adPlaying:(id)ad {}
 %end
 %hook YTReelInfinitePlaybackDataSource
-- (void)setReels:(NSMutableOrderedSet <YTReelModel *> *)reels {
-    [reels removeObjectsAtIndexes:[reels indexesOfObjectsPassingTest:^BOOL(YTReelModel *obj, NSUInteger idx, BOOL *stop) {
-        return [obj respondsToSelector:@selector(videoType)] ? obj.videoType == 3 : NO;
-    }]];
-    %orig;
+- (YTReelModel *)makeContentModelForEntry:(id)entry {
+    YTReelModel *model = %orig;
+    if ([model respondsToSelector:@selector(videoType)] && model.videoType == 3)
+        return nil;
+    return model;
 }
 %end
 NSString *getAdString(NSString *description) {
-    if ([description containsString:@"brand_promo"])
-        return @"brand_promo";
-    if ([description containsString:@"carousel_footered_layout"])
-        return @"carousel_footered_layout";
-    if ([description containsString:@"carousel_headered_layout"])
-        return @"carousel_headered_layout";
-    if ([description containsString:@"feed_ad_metadata"])
-        return @"feed_ad_metadata";
-    if ([description containsString:@"full_width_portrait_image_layout"])
-        return @"full_width_portrait_image_layout";
-    if ([description containsString:@"full_width_square_image_layout"])
-        return @"full_width_square_image_layout";
-    if ([description containsString:@"landscape_image_wide_button_layout"])
-        return @"landscape_image_wide_button_layout";
-    if ([description containsString:@"post_shelf"])
-        return @"post_shelf";
-    if ([description containsString:@"product_carousel"])
-        return @"product_carousel";
-    if ([description containsString:@"product_engagement_panel"])
-        return @"product_engagement_panel";
-    if ([description containsString:@"product_item"])
-        return @"product_item";
-    if ([description containsString:@"shopping_carousel"])
-        return @"shopping_carousel";
-    if ([description containsString:@"statement_banner"])
-        return @"statement_banner";
-    if ([description containsString:@"square_image_layout"])
-        return @"square_image_layout";
-    if ([description containsString:@"text_image_button_layout"])
-        return @"text_image_button_layout";
-    if ([description containsString:@"text_search_ad"])
-        return @"text_search_ad";
-    if ([description containsString:@"video_display_full_layout"])
-        return @"video_display_full_layout";
-    if ([description containsString:@"video_display_full_buttoned_layout"])
-        return @"video_display_full_buttoned_layout";
+    for (NSString *str in @[
+            @"brand_promo",
+            @"carousel_footered_layout",
+            @"carousel_headered_layout",
+            @"eml.expandable_metadata",
+            @"feed_ad_metadata",
+            @"full_width_portrait_image_layout",
+            @"full_width_square_image_layout",
+            @"landscape_image_wide_button_layout",
+            @"post_shelf",
+            @"product_carousel",
+            @"product_engagement_panel",
+            @"product_item",
+            @"shopping_carousel",
+            @"shopping_item_card_list",
+            @"statement_banner",
+            @"square_image_layout",
+            @"text_image_button_layout",
+            @"text_search_ad",
+            @"video_display_full_layout",
+            @"video_display_full_buttoned_layout"
+    ]) 
+        if ([description containsString:str]) return str;
+
     return nil;
 }
 static BOOL isAdRenderer(YTIElementRenderer *elementRenderer, int kind) {
@@ -369,6 +382,13 @@ static NSMutableArray <YTIItemSectionRenderer *> *filteredArray(NSArray <YTIItem
     [newArray removeObjectsAtIndexes:removeIndexes];
     return newArray;
 }
+%hook _ASDisplayView
+- (void)didMoveToWindow {
+    %orig;
+    if (([self.accessibilityIdentifier isEqualToString:@"eml.expandable_metadata.vpp"]))
+        [self removeFromSuperview];
+}
+%end
 %hook YTInnerTubeCollectionViewController
 - (void)displaySectionsWithReloadingSectionControllerByRenderer:(id)renderer {
     NSMutableArray *sectionRenderers = [self valueForKey:@"_sectionRenderers"];
@@ -423,19 +443,12 @@ static NSMutableArray <YTIItemSectionRenderer *> *filteredArray(NSArray <YTIItem
 %group gCenterYouTubeLogo 
 %hook YTNavigationBarTitleView
 - (void)setShouldCenterNavBarTitleView:(BOOL)center {
+    center = YES;
     %orig(center);
-    if (center) {
-        [self alignCustomViewToCenterOfWindow];
-    }
+    [self alignCustomViewToCenterOfWindow];
 }
 - (BOOL)shouldCenterNavBarTitleView {
     return YES;
-}
-%new;
-- (void)alignCustomViewToCenterOfWindow {
-    CGRect frame = self.customView.frame;
-    frame.origin.x = (self.window.frame.size.width - frame.size.width) / 2;
-    self.customView.frame = frame;
 }
 %end
 %end
@@ -585,11 +598,13 @@ static NSMutableArray <YTIItemSectionRenderer *> *filteredArray(NSArray <YTIItem
 // Fake premium - @bhackel
 %group gFakePremium
 // YouTube Premium Logo - @arichornlover & bhackel
-%hook YTHeaderLogoController
+%hook YTHeaderLogoControllerImpl // originally was "YTHeaderLogoController"
 - (void)setTopbarLogoRenderer:(YTITopbarLogoRenderer *)renderer {
     // Modify the type of the icon before setting the renderer
-    YTIIcon *icon = [%c(YTIIcon) new];
-    icon.iconType = YT_PREMIUM_LOGO; // magic number (537) for Premium icon, hopefully it doesnt change. 158 (YT_DEFAULT_LOGO) is default logo.
+    YTIIcon *icon = renderer.iconImage;
+    if (icon) {
+        icon.iconType = YT_PREMIUM_LOGO; // magic number (537) for Premium icon, hopefully it doesnt change. 158 (YT_DEFAULT_LOGO) is default logo.
+        }
     // Use this modified renderer
     %orig;
 }
@@ -697,43 +712,6 @@ static NSMutableArray <YTIItemSectionRenderer *> *filteredArray(NSArray <YTIItem
     }
     %orig;
 }
-%end
-
-// Shorts Quality Picker - @arichornlover
-%group gShortsQualityPicker
-%hook YTHotConfig
-- (BOOL)enableOmitAdvancedMenuInShortsVideoQualityPicker { return YES; }
-- (BOOL)enableShortsVideoQualityPicker { return YES; }
-- (BOOL)iosEnableImmersiveLivePlayerVideoQuality { return YES; }
-- (BOOL)iosEnableShortsPlayerVideoQuality { return YES; }
-- (BOOL)iosEnableShortsPlayerVideoQualityRestartVideo { return YES; }
-- (BOOL)iosEnableSimplerTitleInShortsVideoQualityPicker { return YES; }
-%end
-%end
-
-// YTShortsProgress - https://github.com/PoomSmart/YTShortsProgress/
-%hook YTShortsPlayerViewController
-- (BOOL)shouldAlwaysEnablePlayerBar { return YES; }
-- (BOOL)shouldEnablePlayerBarOnlyOnPause { return NO; }
-%end
-
-%hook YTReelPlayerViewController
-- (BOOL)shouldAlwaysEnablePlayerBar { return YES; }
-- (BOOL)shouldEnablePlayerBarOnlyOnPause { return NO; }
-%end
-
-%hook YTReelPlayerViewControllerSub
-- (BOOL)shouldAlwaysEnablePlayerBar { return YES; }
-- (BOOL)shouldEnablePlayerBarOnlyOnPause { return NO; }
-%end
-
-%hook YTColdConfig
-- (BOOL)iosEnableVideoPlayerScrubber { return YES; }
-- (BOOL)mobileShortsTablnlinedExpandWatchOnDismiss { return YES; }
-%end
-
-%hook YTHotConfig
-- (BOOL)enablePlayerBarForVerticalVideoWhenControlsHiddenInFullscreen { return YES; }
 %end
 
 // YTNoPaidPromo: https://github.com/PoomSmart/YTNoPaidPromo
@@ -982,7 +960,7 @@ static int contrastMode() {
     if (IS_ENABLED(@"hideNotificationButton_enabled")) {
         self.notificationButton.hidden = YES;
     }
-    if (IS_ENABLED(@"hideSponsorBlockButton_enabled")) { 
+    if (IS_ENABLED(kHideiSponsorBlockButton)) { 
         self.sponsorBlockButton.hidden = YES;
         self.sponsorBlockButton.frame = CGRectZero;
     }
@@ -1073,7 +1051,7 @@ static int contrastMode() {
 %group gStockVolumeHUD
 %hook YTColdConfig
 - (BOOL)iosUseSystemVolumeControlInFullscreen {
-    return IS_ENABLED(kStockVolumeHUD) ? YES : %orig;
+    return IS_ENABLED(kStockVolumeHUD) ? YES : NO;
 }
 %end
 %hook UIApplication 
@@ -1404,6 +1382,61 @@ static int contrastMode() {
 %hook YTColdConfig
 - (BOOL)isLandscapeEngagementPanelEnabled {
     return IS_ENABLED(kHideRightPanel) ? NO : %orig;
+}
+%end
+
+// Shorts Quality Picker - @arichornlover
+%group gShortsQualityPicker
+%hook YTHotConfig
+- (BOOL)enableOmitAdvancedMenuInShortsVideoQualityPicker { return YES; }
+- (BOOL)enableShortsVideoQualityPicker { return YES; }
+- (BOOL)iosEnableImmersiveLivePlayerVideoQuality { return YES; }
+- (BOOL)iosEnableShortsPlayerVideoQuality { return YES; }
+- (BOOL)iosEnableShortsPlayerVideoQualityRestartVideo { return YES; }
+- (BOOL)iosEnableSimplerTitleInShortsVideoQualityPicker { return YES; }
+%end
+%end
+
+// YTShortsProgress - https://github.com/PoomSmart/YTShortsProgress/
+%hook YTShortsPlayerViewController
+- (BOOL)shouldAlwaysEnablePlayerBar { return YES; }
+- (BOOL)shouldEnablePlayerBarOnlyOnPause { return NO; }
+%end
+
+%hook YTReelPlayerViewController
+- (BOOL)shouldAlwaysEnablePlayerBar { return YES; }
+- (BOOL)shouldEnablePlayerBarOnlyOnPause { return NO; }
+%end
+
+%hook YTReelPlayerViewControllerSub
+- (BOOL)shouldAlwaysEnablePlayerBar { return YES; }
+- (BOOL)shouldEnablePlayerBarOnlyOnPause { return NO; }
+%end
+
+%hook YTColdConfig
+- (BOOL)iosEnableVideoPlayerScrubber { return YES; }
+- (BOOL)mobileShortsTablnlinedExpandWatchOnDismiss { return YES; }
+%end
+
+%hook YTHotConfig
+- (BOOL)enablePlayerBarForVerticalVideoWhenControlsHiddenInFullscreen { return YES; }
+%end
+
+// Hide Shorts Cells - for uYou 3.0.4+ (PoomSmart/YTUnShorts)
+%hook YTIElementRenderer
+- (NSData *)elementData {
+    // Check if hideShortsCells is enabled
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"hideShortsCells"]) {
+        NSString *description = [self description];
+        
+        BOOL hasShorts = ([description containsString:@"shorts_shelf"] || [description containsString:@"shorts_video_cell"] || [description containsString:@"6Shorts"]) && ![description containsString:@"history*"];
+        BOOL hasShortsInHistory = [description containsString:@"compact_video.eml"] && [description containsString:@"youtube_shorts_"];
+
+        if (hasShorts || hasShortsInHistory) {
+            return [NSData data];
+        }
+    }
+    return %orig;
 }
 %end
 

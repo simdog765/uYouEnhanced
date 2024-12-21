@@ -9,7 +9,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4.2.1
+        uses: actions/checkout@v4.2.2
 
       - name: Set up Git
         run: |
@@ -34,6 +34,8 @@ jobs:
           git add .
           git submodule update --init --recursive --remote Tweaks/YTClassicVideoQuality
           git add .
+          git submodule update --init --recursive --remote Tweaks/YTIcons
+          git add .
           git submodule update --init --recursive --remote Tweaks/YTUHD
           git add .
           git submodule update --init --recursive --remote Tweaks/YTVideoOverlay
@@ -43,6 +45,8 @@ jobs:
           git submodule update --init --recursive --remote Tweaks/YouPiP
           git add .
           git submodule update --init --recursive --remote Tweaks/YouQuality
+          git add .
+          git submodule update --init --recursive --remote Tweaks/YouSpeed
           git add .
           git submodule update --init --recursive --remote Tweaks/YouTimeStamp
           git add .
